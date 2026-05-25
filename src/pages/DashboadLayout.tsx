@@ -5,8 +5,7 @@ export default function DashboardLayout() {
     <div className="dashboard-shell">
       <aside className="dashboard-sidebar">
         <div className="dashboard-brand">
-          <span>SMS</span>
-          <strong>School Manager</strong>
+            <strong>School Manager</strong>
         </div>
 
         <nav className="dashboard-nav" aria-label="Dashboard navigation">
