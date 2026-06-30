@@ -1,15 +1,6 @@
 import { useState } from "react"
 import { Search } from "lucide-react"
 
-import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-
 const SubjectList = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedDepartment, setSelectedDepartment] = useState('')
@@ -22,24 +13,26 @@ const SubjectList = () => {
         <div className='actions-row'>
           <div className='search-field'>
             <Search className='search-icon' />
-            <Input
+            <input
+              className="h-10 w-full rounded-lg border border-[#c7c4d8] bg-white px-10 text-sm text-[#0b1c30] outline-none transition placeholder:text-[#777587] focus:ring-2 focus:ring-[#4f46e5]"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search subjects"
+              type="search"
             />
           </div>
         </div>
         <div className='flex items-center gap-2 sm:w-auto'>
-          <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Department" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="science">Science</SelectItem>
-              <SelectItem value="arts">Arts</SelectItem>
-              <SelectItem value="business">Business</SelectItem>
-            </SelectContent>
-          </Select>
+          <select
+            className="h-10 w-48 rounded-lg border border-[#c7c4d8] bg-white px-3 text-sm text-[#0b1c30] outline-none transition focus:ring-2 focus:ring-[#4f46e5]"
+            value={selectedDepartment}
+            onChange={(e) => setSelectedDepartment(e.target.value)}
+          >
+            <option value="">Department</option>
+            <option value="science">Science</option>
+            <option value="arts">Arts</option>
+            <option value="business">Business</option>
+          </select>
         </div>
       </div>
     </div>
