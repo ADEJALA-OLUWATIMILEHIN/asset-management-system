@@ -1,18 +1,7 @@
-import { CalendarClock, CheckCircle2, ClipboardList, Filter, Plus, TriangleAlert } from "lucide-react";
-
-const stats = [
-  { label: "Pending", value: "14", note: "+12% vs LW", icon: ClipboardList, color: "#516479" },
-  { label: "Scheduled", value: "28", note: "On Track", icon: CalendarClock, color: "#001970" },
-  { label: "Completed", value: "156", note: "84% Rate", icon: CheckCircle2, color: "#8a2a12" },
-  { label: "Overdue", value: "03", note: "Critical", icon: TriangleAlert, color: "#c00000" },
-];
-
-const rows = [
-  ["Data Node - XT900", "Hardware Calibration", "TechLink Solutions", "$1,450.00", "Oct 12, 2023", "Apr 12, 2024", "SCHEDULED"],
-  ["HVAC Main Unit - 02", "Preventive Inspection", "Global Climate Inc.", "$820.00", "Nov 05, 2023", "Feb 05, 2024", "OVERDUE"],
-  ["GenSet Prime 500", "Oil & Filter Exchange", "Prime Power Svc.", "$2,100.00", "Jan 18, 2024", "Jul 18, 2024", "PENDING"],
-  ["Precision T7920", "Software Patching", "Internal IT", "$0.00", "Feb 14, 2024", "Aug 14, 2024", "COMPLETED"],
-];
+import { CalendarClock, CheckCircle2, ClipboardList, Filter, Plus, TriangleAlert, Loader } from "lucide-react";
+import { useEffect, useState } from "react";
+import { getMaintenanceRecords, getMaintenanceStats, type MaintenanceRecord } from "@/api/MaintenanceApi/MaintenanceApi";
+import { Link } from "react-router-dom";
 
 const badge: Record<string, string> = {
   SCHEDULED: "bg-[#dce4ff] text-[#001970]",
@@ -21,7 +10,75 @@ const badge: Record<string, string> = {
   COMPLETED: "bg-[#ffd9ca] text-[#8a2a12]",
 };
 
+const statConfig: Record<string, { icon: typeof CalendarClock; color: string }> = {
+  Pending: { icon: ClipboardList, color: "#516479" },
+  Scheduled: { icon: CalendarClock, color: "#001970" },
+  Completed: { icon: CheckCircle2, color: "#8a2a12" },
+  Overdue: { icon: TriangleAlert, color: "#c00000" },
+};
+
 export default function Maintenance() {
+  const [maintenance, setMaintenance] = useState<MaintenanceRecord[]>([]);
+  const [stats, setStats] = useState({ pending: 0, scheduled: 0, completed: 0, overdue: 0 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const [recordsRes, statsRes] = await Promise.all([
+          getMaintenanceRecords(),
+          getMaintenanceStats(),
+        ]);
+
+        if (recordsRes.data?.maintenanceRecords) {
+          setMaintenance(recordsRes.data.maintenanceRecords);
+        }
+
+        if (statsRes.data) {
+          setStats(statsRes.data);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load maintenance data");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  const statsList = [
+    { label: "Pending", value: stats.pending, note: "+12% vs LW" },
+    { label: "Scheduled", value: stats.scheduled, note: "On Track" },
+    { label: "Completed", value: stats.completed, note: "84% Rate" },
+    { label: "Overdue", value: stats.overdue, note: "Critical" },
+  ];
+
+  const formatDate = (date: string | undefined | null): string => {
+    if (!date) return "N/A";
+    try {
+      return new Date(date).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    } catch {
+      return "N/A";
+    }
+  };
+
+  const formatCurrency = (amount: number | undefined | null): string => {
+    if (amount === undefined || amount === null) return "₦0.00";
+    return new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: "NGN",
+    }).format(amount);
+  };
+
   return (
     <section className="mx-auto max-w-[1260px]">
       <div className="mb-10 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
@@ -35,32 +92,37 @@ export default function Maintenance() {
           <button className="h-12 rounded border border-[#c7c4d8] bg-white px-8 font-bold text-[#001970]">
             Export
           </button>
-          <button className="inline-flex h-12 items-center gap-3 rounded bg-[#001970] px-8 font-bold text-white">
+          <Link
+            className="inline-flex h-12 items-center gap-3 rounded bg-[#001970] px-8 font-bold text-white hover:bg-[#263f91]"
+            to="/maintenance/schedule"
+          >
             <Plus className="h-5 w-5" />
             Schedule Maintenance
-          </button>
+          </Link>
+       
         </div>
       </div>
 
       <div className="grid gap-5 md:grid-cols-4">
-        {stats.map((stat) => {
-          const Icon = stat.icon;
+        {statsList.map((stat) => {
+          const config = statConfig[stat.label];
+          const Icon = config.icon;
           return (
             <article className="rounded border border-[#c7c4d8] bg-white p-7" key={stat.label}>
               <div className="mb-6 flex items-start justify-between">
                 <div className="grid h-14 w-14 place-items-center rounded bg-[#eceff5]">
-                  <Icon className="h-7 w-7" style={{ color: stat.color }} />
+                  <Icon className="h-7 w-7" style={{ color: config.color }} />
                 </div>
-                <span className="rounded-full bg-[#e7e7f0] px-3 py-1 text-sm" style={{ color: stat.color }}>
+                <span className="rounded-full bg-[#e7e7f0] px-3 py-1 text-sm" style={{ color: config.color }}>
                   {stat.note}
                 </span>
               </div>
               <p className="text-lg">{stat.label}</p>
               <strong className="text-4xl" style={{ color: stat.label === "Overdue" ? "#c00000" : undefined }}>
-                {stat.value}
+                {String(stat.value).padStart(2, "0")}
               </strong>
               <div className="mt-6 h-1 rounded-full bg-[#e6e7ee]">
-                <div className="h-1 w-[55%] rounded-full" style={{ background: stat.color }} />
+                <div className="h-1 w-[55%] rounded-full" style={{ background: config.color }} />
               </div>
             </article>
           );
@@ -88,31 +150,65 @@ export default function Maintenance() {
             Sort by: <strong className="text-[#001970]">Next Service Date⌄</strong>
           </p>
         </div>
-        <table className="w-full min-w-[900px] text-left text-lg">
-          <thead className="bg-[#f0eef7] text-sm uppercase tracking-widest text-[#30313d]">
-            <tr>
-              {["Asset", "Maintenance Type", "Vendor", "Cost", "Last Service", "Next Service", "Status", "Actions"].map(
-                (head) => (
-                  <th className="px-8 py-5" key={head}>{head}</th>
-                ),
-              )}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#c7c4d8]">
-            {rows.map((row) => (
-              <tr key={row[0]}>
-                <td className="px-8 py-6 font-semibold">{row[0]}<p className="text-sm font-normal">SN: 44921-A</p></td>
-                {row.slice(1, 6).map((cell) => (
-                  <td className="px-8 py-6" key={cell}>{cell}</td>
-                ))}
-                <td className="px-8 py-6">
-                  <span className={`rounded-full px-4 py-2 text-sm font-bold ${badge[row[6]]}`}>{row[6]}</span>
-                </td>
-                <td className="px-8 py-6 font-bold text-[#001970]">Update</td>
+
+        {loading ? (
+          <div className="flex h-64 items-center justify-center">
+            <Loader className="h-8 w-8 animate-spin text-[#001970]" />
+          </div>
+        ) : error ? (
+          <div className="border-t border-[#c7c4d8] p-6 text-center text-[#c00000]">
+            <p>{error}</p>
+          </div>
+        ) : (
+          <table className="w-full min-w-[900px] text-left text-lg">
+            <thead className="bg-[#f0eef7] text-sm uppercase tracking-widest text-[#30313d]">
+              <tr>
+                {["Asset", "Maintenance Type", "Vendor", "Cost", "Last Service", "Next Service", "Status", "Actions"].map(
+                  (head) => (
+                    <th className="px-8 py-5" key={head}>
+                      {head}
+                    </th>
+                  ),
+                )}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-[#c7c4d8]">
+              {maintenance.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-8 py-6 text-center text-[#606475]">
+                    No maintenance records found
+                  </td>
+                </tr>
+              ) : (
+                maintenance.map((record) => (
+                  <tr key={record.id}>
+                    <td className="px-8 py-6 font-semibold">
+                      {record.asset?.name || `Asset ID: ${record.assetId}`}
+                      <p className="text-sm font-normal">
+                        {record.asset?.assetCode || "N/A"}
+                      </p>
+                    </td>
+                    <td className="px-8 py-6">{record.maintenanceType}</td>
+                    <td className="px-8 py-6">{record.vendorId ? `Vendor ${record.vendorId}` : "Internal"}</td>
+                    <td className="px-8 py-6">{formatCurrency(record.cost)}</td>
+                    <td className="px-8 py-6">{formatDate(record.lastServiceDate)}</td>
+                    <td className="px-8 py-6">{formatDate(record.nextServiceDate)}</td>
+                    <td className="px-8 py-6">
+                      <span className={`rounded-full px-4 py-2 text-sm font-bold ${badge[record.status]}`}>
+                        {record.status}
+                      </span>
+                    </td>
+                    <td className="px-8 py-6">
+                      <Link className="font-bold text-[#001970] hover:underline" to={`/maintenance/schedule?assetId=${record.assetId}`}>
+                        Update
+                      </Link>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        )}
       </article>
     </section>
   );

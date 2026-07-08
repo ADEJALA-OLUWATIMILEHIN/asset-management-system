@@ -8,7 +8,17 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Wrench,
+  Loader,
+  Plus,
 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import {
+  createCalendarEvent,
+  getCalendarEventsByMonth,
+  getCalendarStats,
+  type CalendarEvent,
+  type EventType,
+} from "@/api/CalendarApi/CalendarApi";
 
 const filters = [
   { label: "Insurance Renewals", color: "bg-[#18b980]" },
@@ -17,91 +27,194 @@ const filters = [
   { label: "Audit Schedule", color: "bg-[#263f91]" },
 ];
 
-const days = [
-  ["29", "muted"],
-  ["30", "muted"],
-  ["1", ""],
-  ["2", ""],
-  ["3", ""],
-  ["4", ""],
-  ["5", ""],
-  ["6", ""],
-  ["7", ""],
-  ["8", "today"],
-  ["9", ""],
-  ["10", ""],
-  ["11", ""],
-  ["12", ""],
-  ["13", ""],
-  ["14", ""],
-  ["15", ""],
-  ["16", ""],
-  ["17", ""],
-  ["18", ""],
-  ["19", ""],
-  ["20", ""],
-  ["21", ""],
-  ["22", ""],
-  ["23", ""],
-  ["24", ""],
-  ["25", ""],
-  ["26", ""],
-  ["27", ""],
-  ["28", ""],
-  ["29", ""],
-  ["30", ""],
-  ["31", ""],
-  ["1", "muted"],
-  ["2", "muted"],
-];
-
-const eventMap: Record<string, { text: string; type: "renewal" | "maintenance" | "expiry" | "audit" }[]> = {
-  "1": [{ text: "Ins. Renewal #492", type: "renewal" }],
-  "2": [{ text: "Crane Service A", type: "maintenance" }],
-  "4": [{ text: "License Exp. F-02", type: "expiry" }],
-  "8": [
-    { text: "Site Audit - North", type: "audit" },
-    { text: "HVAC Filter Swap", type: "maintenance" },
-  ],
-  "10": [{ text: "Volvo FH-16 Ins.", type: "renewal" }],
-  "15": [{ text: "Fleet Maintenance", type: "maintenance" }],
-  "18": [{ text: "R.W. Certificate", type: "renewal" }],
-  "23": [{ text: "Generator Service", type: "maintenance" }],
-  "30": [{ text: "Lease Payment Due", type: "renewal" }],
+const eventTypeMap: Record<EventType, "renewal" | "maintenance" | "expiry" | "audit"> = {
+  INSURANCE_RENEWAL: "renewal",
+  MAINTENANCE_DUE: "maintenance",
+  LICENSE_EXPIRY: "expiry",
+  AUDIT_SCHEDULE: "audit",
+  LEASE_PAYMENT: "renewal",
 };
 
 const eventClass = {
   renewal: "border-[#18b980] bg-[#cbf5df] text-[#006c43]",
   maintenance: "border-[#f39b0b] bg-[#fff1c5] text-[#913900]",
   expiry: "border-[#f04444] bg-[#ffe0e0] text-[#c50000]",
-  audit: "border-[#18b980] bg-[#cbf5df] text-[#006c43]",
+  audit: "border-[#263f91] bg-[#dce4ff] text-[#001970]",
 };
 
-const statCards = [
-  {
-    label: "Renewals Complete",
-    value: "124",
-    note: "+12%",
-    icon: CheckCircle2,
-    iconClass: "bg-[#d7f8e5] text-[#00964f]",
-  },
-  {
-    label: "Pending Maintenance",
-    value: "18",
-    note: "this week",
-    icon: BriefcaseBusiness,
-    iconClass: "bg-[#fff2bb] text-[#b36b00]",
-  },
-  {
-    label: "Overdue Compliance",
-    value: "3",
-    note: "Immediate",
-    icon: AlertOctagon,
-    iconClass: "bg-[#ffdcdc] text-[#e00000]",
-  },
-];
+type CalendarDay = {
+  label: string;
+  state: "muted" | "today" | "";
+  dateKey: string;
+};
+
+const toDateKey = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+
+const eventDateKey = (value: string) => {
+  const dateOnly = value.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) return dateOnly;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : toDateKey(date);
+};
+
+const getDaysInMonth = (year: number, month: number) => {
+  const date = new Date(year, month, 1);
+  const days: CalendarDay[] = [];
+
+  // Get the first day of the month
+  const firstDay = date.getDay();
+
+  // Add muted days from previous month
+  const prevMonthDays = new Date(year, month, 0).getDate();
+  for (let i = firstDay - 1; i >= 0; i--) {
+    const dayDate = new Date(year, month - 1, prevMonthDays - i);
+    days.push({ label: String(prevMonthDays - i), state: "muted", dateKey: toDateKey(dayDate) });
+  }
+
+  // Add days of current month
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const today = new Date();
+  for (let i = 1; i <= daysInMonth; i++) {
+    const isToday = today.getDate() === i && today.getMonth() === month && today.getFullYear() === year;
+    const dayDate = new Date(year, month, i);
+    days.push({ label: String(i), state: isToday ? "today" : "", dateKey: toDateKey(dayDate) });
+  }
+
+  // Add muted days from next month to fill the grid
+  const remainingDays = 42 - days.length;
+  for (let i = 1; i <= remainingDays; i++) {
+    const dayDate = new Date(year, month + 1, i);
+    days.push({ label: String(i), state: "muted", dateKey: toDateKey(dayDate) });
+  }
+
+  return days;
+};
 
 export default function Calendar() {
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [stats, setStats] = useState({ renewals: 0, maintenance: 0, expiry: 0, audit: 0, critical: 0 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [eventTitle, setEventTitle] = useState("");
+  const [eventDate, setEventDate] = useState("");
+  const [eventColor, setEventColor] = useState<"green" | "yellow">("yellow");
+  const [savingEvent, setSavingEvent] = useState(false);
+
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const [eventsRes, statsRes] = await Promise.all([
+        getCalendarEventsByMonth(currentDate.getFullYear(), currentDate.getMonth() + 1),
+        getCalendarStats(),
+      ]);
+
+      if (eventsRes.data?.events) {
+        setEvents(eventsRes.data.events);
+      }
+
+      if (statsRes.data) {
+        setStats({
+          renewals: statsRes.data.renewals || 0,
+          maintenance: statsRes.data.maintenance || 0,
+          expiry: statsRes.data.expiry || 0,
+          audit: statsRes.data.audit || 0,
+          critical: statsRes.data.critical || 0,
+        });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load calendar data");
+    } finally {
+      setLoading(false);
+    }
+  }, [currentDate]);
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      void loadData();
+    });
+  }, [loadData]);
+
+  const handleAddEvent = async () => {
+    if (!eventTitle.trim() || !eventDate) return;
+
+    setSavingEvent(true);
+    const result = await createCalendarEvent({
+      title: eventTitle.trim(),
+      eventDate,
+      eventType: eventColor === "yellow" ? "MAINTENANCE_DUE" : "INSURANCE_RENEWAL",
+      isCritical: eventColor === "yellow",
+      isResolved: false,
+      linkedAssetId: null,
+      linkedDocId: null,
+    });
+
+    setSavingEvent(false);
+
+    if (!result.data) {
+      setError(result.message ?? "Failed to add calendar note");
+      return;
+    }
+
+    setEventTitle("");
+    setEventDate("");
+    await loadData();
+  };
+
+  const days = getDaysInMonth(currentDate.getFullYear(), currentDate.getMonth());
+
+  // Group events by day
+  const eventMap: Record<string, CalendarEvent[]> = {};
+  events.forEach((event) => {
+    const key = eventDateKey(event.eventDate);
+    if (!key) return;
+    if (!eventMap[key]) {
+      eventMap[key] = [];
+    }
+    eventMap[key].push(event);
+  });
+
+  const monthName = currentDate.toLocaleString("en-US", { month: "long", year: "numeric" });
+
+  const handlePrevMonth = () => {
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1));
+  };
+
+  const handleNextMonth = () => {
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1));
+  };
+
+  const handleToday = () => {
+    setCurrentDate(new Date());
+  };
+
+  const statCards = [
+    {
+      label: "Renewals Complete",
+      value: String(stats.renewals),
+      note: "Active",
+      icon: CheckCircle2,
+      iconClass: "bg-[#d7f8e5] text-[#00964f]",
+    },
+    {
+      label: "Pending Maintenance",
+      value: String(stats.maintenance),
+      note: "This month",
+      icon: BriefcaseBusiness,
+      iconClass: "bg-[#fff2bb] text-[#b36b00]",
+    },
+    {
+      label: "Critical Alerts",
+      value: String(stats.critical),
+      note: "Immediate",
+      icon: AlertOctagon,
+      iconClass: "bg-[#ffdcdc] text-[#e00000]",
+    },
+  ];
+
   return (
     <section className="-mx-5 -my-8 grid min-h-[calc(100vh-72px)] grid-cols-1 lg:-mx-10 lg:grid-cols-[330px_1fr]">
       <aside className="border-r border-[#c7c4d8] px-8 py-9">
@@ -115,6 +228,55 @@ export default function Calendar() {
             </label>
           ))}
         </div>
+
+        <article className="mt-8 rounded border border-[#c7c4d8] bg-white p-5">
+          <h2 className="mb-4 flex items-center gap-2 font-bold text-[#001970]">
+            <Plus className="h-4 w-4" />
+            Add Date Note
+          </h2>
+          <div className="space-y-3">
+            <input
+              className="h-11 w-full rounded border border-[#c7c4d8] px-3 text-sm"
+              placeholder="Words for this date"
+              value={eventTitle}
+              onChange={(event) => setEventTitle(event.target.value)}
+            />
+            <input
+              className="h-11 w-full rounded border border-[#c7c4d8] px-3 text-sm"
+              type="date"
+              value={eventDate}
+              onChange={(event) => setEventDate(event.target.value)}
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                className={`h-10 rounded border text-sm font-bold ${
+                  eventColor === "yellow" ? "border-[#f39b0b] bg-[#fff1c5] text-[#913900]" : "border-[#c7c4d8]"
+                }`}
+                onClick={() => setEventColor("yellow")}
+                type="button"
+              >
+                Yellow Important
+              </button>
+              <button
+                className={`h-10 rounded border text-sm font-bold ${
+                  eventColor === "green" ? "border-[#18b980] bg-[#cbf5df] text-[#006c43]" : "border-[#c7c4d8]"
+                }`}
+                onClick={() => setEventColor("green")}
+                type="button"
+              >
+                Green Normal
+              </button>
+            </div>
+            <button
+              className="h-11 w-full rounded bg-[#001970] font-bold text-white disabled:opacity-50"
+              disabled={!eventTitle.trim() || !eventDate || savingEvent}
+              onClick={handleAddEvent}
+              type="button"
+            >
+              {savingEvent ? "Adding..." : "Add to Calendar"}
+            </button>
+          </div>
+        </article>
 
         <article className="mt-10 rounded border border-[#b7bdd4] bg-[#e5e8f7] p-6">
           <h2 className="flex items-center gap-3 font-bold text-[#001970]">
@@ -142,13 +304,24 @@ export default function Calendar() {
       <div className="px-6 py-10 lg:px-10">
         <div className="mb-10 flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex flex-wrap items-center gap-5">
-            <h1 className="text-3xl font-bold">October 2024</h1>
+            <h1 className="text-3xl font-bold">{monthName}</h1>
             <div className="flex rounded border border-[#c7c4d8] bg-white">
-              <button className="grid h-12 w-14 place-items-center border-r border-[#c7c4d8]">
+              <button 
+                className="grid h-12 w-14 place-items-center border-r border-[#c7c4d8] hover:bg-[#f3f1f8]"
+                onClick={handlePrevMonth}
+              >
                 <ChevronLeft className="h-5 w-5" />
               </button>
-              <button className="h-12 border-r border-[#c7c4d8] px-5">Today</button>
-              <button className="grid h-12 w-14 place-items-center">
+              <button 
+                className="h-12 border-r border-[#c7c4d8] px-5 hover:bg-[#f3f1f8]"
+                onClick={handleToday}
+              >
+                Today
+              </button>
+              <button 
+                className="grid h-12 w-14 place-items-center hover:bg-[#f3f1f8]"
+                onClick={handleNextMonth}
+              >
                 <ChevronRight className="h-5 w-5" />
               </button>
             </div>
@@ -173,38 +346,52 @@ export default function Calendar() {
               </div>
             ))}
           </div>
-          <div className="grid grid-cols-7">
-            {days.map(([day, state], index) => {
-              const events = eventMap[day] ?? [];
-              return (
-                <div
-                  className={`min-h-[145px] border-r border-b border-[#e0e4ec] p-3 last:border-r-0 ${state === "muted" ? "bg-[#eef2f7] text-[#8b9ab1]" : ""} ${state === "today" ? "bg-[#eeeeff]" : ""}`}
-                  key={`${day}-${index}`}
-                >
-                  <div className="flex items-start justify-between">
-                    <strong className="text-lg">{day}</strong>
-                    {state === "today" && (
-                      <span className="rounded bg-[#001970] px-2 py-0.5 text-xs text-white">Today</span>
-                    )}
+          {loading ? (
+            <div className="flex h-96 items-center justify-center">
+              <Loader className="h-8 w-8 animate-spin text-[#001970]" />
+            </div>
+          ) : error ? (
+            <div className="flex h-96 items-center justify-center text-[#c00000]">
+              <p>{error}</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-7">
+              {days.map((calendarDay, index) => {
+                const dayEvents = eventMap[calendarDay.dateKey] ?? [];
+                return (
+                  <div
+                    className={`min-h-[145px] border-r border-b border-[#e0e4ec] p-3 last:border-r-0 ${calendarDay.state === "muted" ? "bg-[#eef2f7] text-[#8b9ab1]" : ""} ${calendarDay.state === "today" ? "bg-[#eeeeff]" : ""}`}
+                    key={`${calendarDay.dateKey}-${index}`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <strong className="text-lg">{calendarDay.label}</strong>
+                      {calendarDay.state === "today" && (
+                        <span className="rounded bg-[#001970] px-2 py-0.5 text-xs text-white">Today</span>
+                      )}
+                    </div>
+                    <div className="mt-5 space-y-2">
+                      {dayEvents.map((event) => {
+                        const eventType = eventTypeMap[event.eventType];
+                        return (
+                          <div
+                            className={`truncate border-l-4 px-2 py-1 text-sm ${eventClass[eventType]}`}
+                            key={event.id}
+                            title={event.title}
+                          >
+                            {eventType === "maintenance" ? <Wrench className="mr-1 inline h-3 w-3" /> : null}
+                            {eventType === "renewal" ? <ShieldCheck className="mr-1 inline h-3 w-3" /> : null}
+                            {eventType === "audit" ? <ClipboardCheck className="mr-1 inline h-3 w-3" /> : null}
+                            {eventType === "expiry" ? "! " : null}
+                            {event.title}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div className="mt-5 space-y-2">
-                    {events.map((event) => (
-                      <div
-                        className={`truncate border-l-4 px-2 py-1 text-sm ${eventClass[event.type]}`}
-                        key={event.text}
-                      >
-                        {event.type === "maintenance" ? <Wrench className="mr-1 inline h-3 w-3" /> : null}
-                        {event.type === "renewal" ? <ShieldCheck className="mr-1 inline h-3 w-3" /> : null}
-                        {event.type === "audit" ? <ClipboardCheck className="mr-1 inline h-3 w-3" /> : null}
-                        {event.type === "expiry" ? "! " : null}
-                        {event.text}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </article>
 
         <div className="mt-10 grid gap-6 md:grid-cols-3">

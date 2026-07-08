@@ -29,6 +29,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Getasset } from "@/api/AssetApi/Getasset";
 import type { AssetApiAsset, AssetCategory, AssetStatus } from "@/api/AssetApi/Getasset";
+import { getDocuments, type DocumentRecord } from "@/api/DocumentApi/Document";
+import { getMaintenanceRecords, type MaintenanceRecord } from "@/api/MaintenanceApi/MaintenanceApi";
 
 type RegistryCategoryTone = "vehicle" | "hardware" | "property" | "furniture" | "equipment";
 type RegistryStatusTone = "active" | "maintenance" | "expired";
@@ -221,7 +223,7 @@ const formatMoney = (value?: number | string | null) => {
 
   return new Intl.NumberFormat("en", {
     style: "currency",
-    currency: "USD",
+    currency: "NGN",
   }).format(amount);
 };
 
@@ -353,7 +355,6 @@ export default function Assets() {
   const [departmentFilter, setDepartmentFilter] = useState("all");
   const [branchFilter, setBranchFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
-
   useEffect(() => {
     let isMounted = true;
 
@@ -756,12 +757,71 @@ function AssetDetailView({
   onSelectAsset: (id: string) => void;
   selectedAsset: AssetApiAsset;
 }) {
+  const [activeTab, setActiveTab] = useState<"overview" | "documents" | "maintenance" | "audit">("overview");
+  const [linkedDocuments, setLinkedDocuments] = useState<DocumentRecord[]>([]);
+  const [maintenanceRecords, setMaintenanceRecords] = useState<MaintenanceRecord[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [maintenanceLoading, setMaintenanceLoading] = useState(false);
   const branchLocation = getBranchLocation(selectedAsset);
   const departmentName = getDepartmentName(selectedAsset);
   const conditionScore = Math.max(0, Math.min(100, selectedAsset.conditionScore ?? 0));
   const statusClass = statusClasses[selectedAsset.status] ?? "bg-[#e5e7eb] text-[#374151]";
   const category = categoryLabels[selectedAsset.category] ?? formatEnum(selectedAsset.category);
   const documentCount = selectedAsset.documents?.length ?? 0;
+
+  useEffect(() => {
+    if (activeTab !== "documents") return;
+
+    let mounted = true;
+
+    queueMicrotask(() => {
+      if (!mounted) return;
+      setDocumentsLoading(true);
+
+      getDocuments()
+        .then((docs) => {
+          if (mounted) {
+            setLinkedDocuments(docs.filter((doc) => doc.linkedAssetId === selectedAsset.id));
+          }
+        })
+        .catch((error) => console.error("Failed to load linked documents", error))
+        .finally(() => {
+          if (mounted) setDocumentsLoading(false);
+        });
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeTab, selectedAsset.id]);
+
+  useEffect(() => {
+    if (activeTab !== "maintenance") return;
+
+    let mounted = true;
+
+    queueMicrotask(() => {
+      if (!mounted) return;
+      setMaintenanceLoading(true);
+
+      getMaintenanceRecords()
+        .then((result) => {
+          if (mounted) {
+            setMaintenanceRecords(
+              result.data?.maintenanceRecords.filter((record) => record.assetId === selectedAsset.id) ?? []
+            );
+          }
+        })
+        .catch((error) => console.error("Failed to load maintenance records", error))
+        .finally(() => {
+          if (mounted) setMaintenanceLoading(false);
+        });
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeTab, selectedAsset.id]);
 
   const infoGroups = [
     {
@@ -842,10 +902,13 @@ function AssetDetailView({
               <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#606475]" />
             </label>
           )}
-          <button className="inline-flex h-14 items-center gap-3 rounded border border-[#c7c4d8] bg-white px-6 text-lg">
+          <Link
+            className="inline-flex h-14 items-center gap-3 rounded border border-[#c7c4d8] bg-white px-6 text-lg text-[#001970] hover:bg-[#f3f1f8]"
+            to={`/assets/${selectedAsset.id}/edit`}
+          >
             <Edit3 className="h-5 w-5" />
             Edit Asset
-          </button>
+          </Link>
           <Link
             className="inline-flex h-14 items-center rounded bg-[#001970] px-7 text-lg font-semibold text-white"
             to="/assets/new"
@@ -858,63 +921,151 @@ function AssetDetailView({
       <div className="grid gap-5 lg:grid-cols-[1fr_255px]">
         <div>
           <div className="mb-7 flex gap-10 border-b border-[#c7c4d8] text-lg">
-            {["Overview", "Documents", "Maintenance", "Audit Trail"].map((tab, index) => (
+            {[
+              { id: "overview", label: "Overview" },
+              { id: "documents", label: "Documents" },
+              { id: "maintenance", label: "Maintenance" },
+              { id: "audit", label: "Audit Trail" },
+            ].map((tab) => (
               <button
-                className={`pb-5 ${index === 0 ? "border-b-2 border-[#001970] font-bold text-[#001970]" : ""}`}
-                key={tab}
+                className={`pb-5 transition-colors ${
+                  activeTab === tab.id
+                    ? "border-b-2 border-[#001970] font-bold text-[#001970]"
+                    : "text-[#606475] hover:text-[#001970]"
+                }`}
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as typeof activeTab)}
               >
-                {tab}
+                {tab.label}
               </button>
             ))}
           </div>
 
-          <div className="grid gap-4 md:grid-cols-3">
-            {infoGroups.map((group) => {
-              const Icon = group.icon;
-              return (
-                <article className="rounded-lg border border-[#c7c4d8] bg-white p-7" key={group.title}>
-                  <h2 className="mb-5 flex items-center gap-3 text-lg font-medium text-[#001970]">
-                    <Icon className="h-5 w-5" />
-                    {group.title}
-                  </h2>
-                  <div className="divide-y divide-[#e6e3ee]">
-                    {group.rows.map(([label, value]) => (
-                      <div className="grid grid-cols-2 gap-3 py-3 text-lg" key={label}>
-                        <span>{label}</span>
-                        <strong className="text-right">{value}</strong>
+          {activeTab === "overview" && (
+            <>
+              <div className="grid gap-4 md:grid-cols-3">
+                {infoGroups.map((group) => {
+                  const Icon = group.icon;
+                  return (
+                    <article className="rounded-lg border border-[#c7c4d8] bg-white p-7" key={group.title}>
+                      <h2 className="mb-5 flex items-center gap-3 text-lg font-medium text-[#001970]">
+                        <Icon className="h-5 w-5" />
+                        {group.title}
+                      </h2>
+                      <div className="divide-y divide-[#e6e3ee]">
+                        {group.rows.map(([label, value]) => (
+                          <div className="grid grid-cols-2 gap-3 py-3 text-lg" key={label}>
+                            <span>{label}</span>
+                            <strong className="text-right">{value}</strong>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    </article>
+                  );
+                })}
+              </div>
+
+              <div className="mt-7 grid gap-5 lg:grid-cols-2">
+                <article className="relative min-h-[360px] overflow-hidden rounded-lg border border-[#c7c4d8] bg-[#101a20] shadow-sm">
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_55%_45%,#f9fbff_0_13%,#dce3e7_14%_27%,transparent_28%),linear-gradient(180deg,#15313a,#0b1116)]" />
+                  <div className="absolute bottom-9 left-8 h-24 w-[78%] rounded-full bg-white/90 shadow-[0_0_80px_18px_rgba(255,255,255,0.5)]" />
+                  <div className="absolute bottom-14 left-12 h-24 w-[72%] rounded-xl border-2 border-slate-700 bg-white" />
+                  <div className="absolute bottom-20 left-[18%] h-20 w-20 rounded-full border-[10px] border-[#1f2937] bg-slate-100" />
+                  <div className="absolute bottom-20 right-[18%] h-20 w-20 rounded-full border-[10px] border-[#1f2937] bg-slate-100" />
+                  <span className="absolute bottom-7 left-7 rounded bg-[#001970] px-4 py-2 text-lg text-white">
+                    Primary View
+                  </span>
+                </article>
+
+                <article className="rounded-lg border border-[#c7c4d8] bg-white p-7">
+                  <div className="mb-6 flex items-center justify-between text-lg text-[#001970]">
+                    <h2>Asset Map Location</h2>
+                    <button className="flex items-center gap-2">
+                      <ArrowUpRight className="h-5 w-5" />
+                      Full Map
+                    </button>
+                  </div>
+                  <div className="grid h-[285px] place-items-center overflow-hidden bg-[#b7e5e9]">
+                    <MapPinned className="h-24 w-24 text-[#1796a4]" />
                   </div>
                 </article>
-              );
-            })}
-          </div>
+              </div>
+            </>
+          )}
 
-          <div className="mt-7 grid gap-5 lg:grid-cols-2">
-            <article className="relative min-h-[360px] overflow-hidden rounded-lg border border-[#c7c4d8] bg-[#101a20] shadow-sm">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_55%_45%,#f9fbff_0_13%,#dce3e7_14%_27%,transparent_28%),linear-gradient(180deg,#15313a,#0b1116)]" />
-              <div className="absolute bottom-9 left-8 h-24 w-[78%] rounded-full bg-white/90 shadow-[0_0_80px_18px_rgba(255,255,255,0.5)]" />
-              <div className="absolute bottom-14 left-12 h-24 w-[72%] rounded-xl border-2 border-slate-700 bg-white" />
-              <div className="absolute bottom-20 left-[18%] h-20 w-20 rounded-full border-[10px] border-[#1f2937] bg-slate-100" />
-              <div className="absolute bottom-20 right-[18%] h-20 w-20 rounded-full border-[10px] border-[#1f2937] bg-slate-100" />
-              <span className="absolute bottom-7 left-7 rounded bg-[#001970] px-4 py-2 text-lg text-white">
-                Primary View
-              </span>
-            </article>
-
+          {activeTab === "documents" && (
             <article className="rounded-lg border border-[#c7c4d8] bg-white p-7">
-              <div className="mb-6 flex items-center justify-between text-lg text-[#001970]">
-                <h2>Asset Map Location</h2>
-                <button className="flex items-center gap-2">
-                  <ArrowUpRight className="h-5 w-5" />
-                  Full Map
-                </button>
-              </div>
-              <div className="grid h-[285px] place-items-center overflow-hidden bg-[#b7e5e9]">
-                <MapPinned className="h-24 w-24 text-[#1796a4]" />
-              </div>
+              <h2 className="mb-5 text-xl font-bold text-[#001970]">Linked Documents</h2>
+              {documentsLoading ? (
+                <div className="py-8 text-center text-[#606475]">Loading documents...</div>
+              ) : linkedDocuments.length > 0 || (selectedAsset?.documents && selectedAsset.documents.length > 0) ? (
+                <div className="space-y-3">
+                  {(linkedDocuments.length > 0 ? linkedDocuments : selectedAsset.documents ?? []).map((doc) => (
+                    <div
+                      key={doc.id}
+                      className="flex items-center justify-between rounded border border-[#c7c4d8] p-4"
+                    >
+                      <div className="flex items-center gap-3">
+                        <FileText className="h-5 w-5 text-[#001970]" />
+                        <div>
+                          <p className="font-semibold">{doc.name}</p>
+                          <p className="text-sm text-[#606475]">{doc.docType || "Document"}</p>
+                        </div>
+                      </div>
+                      <span
+                        className={`rounded px-3 py-1 text-sm font-bold ${
+                          doc.status === "VERIFIED"
+                            ? "bg-[#d4f4dd] text-[#007042]"
+                            : doc.status === "EXPIRING_SOON"
+                              ? "bg-[#fff1c5] text-[#913900]"
+                              : "bg-[#ffe0e0] text-[#c50000]"
+                        }`}
+                      >
+                        {doc.status || "Active"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-8 text-center text-[#606475]">No documents linked to this asset</div>
+              )}
             </article>
-          </div>
+          )}
+
+          {activeTab === "maintenance" && (
+            <article className="rounded-lg border border-[#c7c4d8] bg-white p-7">
+              <h2 className="mb-5 text-xl font-bold text-[#001970]">Maintenance Records</h2>
+              {maintenanceLoading ? (
+                <div className="py-8 text-center text-[#606475]">Loading maintenance records...</div>
+              ) : maintenanceRecords.length > 0 ? (
+                <div className="space-y-3">
+                  {maintenanceRecords.map((record) => (
+                    <div key={record.id} className="rounded border border-[#c7c4d8] p-4">
+                      <div className="flex items-center justify-between gap-4">
+                        <strong>{record.maintenanceType}</strong>
+                        <span className="rounded bg-[#dce4ff] px-3 py-1 text-sm font-bold text-[#001970]">
+                          {record.status}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm text-[#606475]">
+                        Next service: {formatDate(record.nextServiceDate)} | Cost: {formatMoney(record.cost)}
+                      </p>
+                      {record.notes && <p className="mt-2 text-sm text-[#30313d]">{record.notes}</p>}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-8 text-center text-[#606475]">No maintenance records available for this asset</div>
+              )}
+            </article>
+          )}
+
+          {activeTab === "audit" && (
+            <article className="rounded-lg border border-[#c7c4d8] bg-white p-7">
+              <h2 className="mb-5 text-xl font-bold text-[#001970]">Audit Trail</h2>
+              <div className="py-8 text-center text-[#606475]">No audit records available for this asset</div>
+            </article>
+          )}
         </div>
 
         <aside className="space-y-5">
@@ -953,19 +1104,25 @@ function AssetDetailView({
           </article>
 
           <article className="space-y-6 rounded-lg border border-[#c7c4d8] bg-white p-8 text-lg">
-            <button className="flex items-center gap-5">
+            <Link
+              to={`/documents/new?assetId=${selectedAsset?.id || ""}`}
+              className="flex items-center gap-5 hover:text-[#001970] transition-colors"
+            >
               <Upload className="h-5 w-5" />
               Upload Document
-            </button>
-            <button className="flex items-center gap-5">
+            </Link>
+            <button
+              onClick={() => setActiveTab("documents")}
+              className="flex items-center gap-5 hover:text-[#001970] transition-colors"
+            >
               <FileText className="h-5 w-5" />
               View Documents
             </button>
-            <button className="flex items-center gap-5">
+            <button className="flex items-center gap-5 hover:text-[#001970] transition-colors">
               <History className="h-5 w-5" />
               View Full History
             </button>
-            <button className="flex items-center gap-5 text-[#d00000]">
+            <button className="flex items-center gap-5 text-[#d00000] hover:text-[#a00000] transition-colors">
               <AlertCircle className="h-5 w-5" />
               Report Issue
             </button>

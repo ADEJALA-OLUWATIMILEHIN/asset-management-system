@@ -26,6 +26,7 @@ export type AssetApiAsset = {
   purchaseDate?: string | null;
   purchasePrice?: number | string | null;
   warrantyExpiry?: string | null;
+  vendorId?: number | null;
   custodianId?: number | null;
   location?: string | null;
   departmentId?: number | null;
@@ -35,6 +36,7 @@ export type AssetApiAsset = {
   lastScannedAt?: string | null;
   riskLevel?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | null;
   createdAt?: string;
+  updatedAt?: string;
   department?: {
     id: number;
     name: string;
@@ -66,11 +68,20 @@ export type AssetCreatePayload = {
   category: AssetCategory;
   status?: AssetStatus;
   serialNumber?: string | null;
+  manufacturer?: string | null;
+  modelYear?: number | null;
+  color?: string | null;
   purchaseDate?: string | null;
   purchasePrice?: number | null;
+  warrantyExpiry?: string | null;
+  vendorId?: number | null;
   location?: string | null;
   departmentId?: number | null;
   custodianId?: number | null;
+  condition?: "EXCELLENT" | "GOOD" | "FAIR" | "POOR" | null;
+  conditionScore?: number | null;
+  valuation?: number | null;
+  riskLevel?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | null;
 };
 
 type ApiResult<T> = {
@@ -130,6 +141,62 @@ export const createAsset = async (
     if (!res.ok) {
       return {
         message: await readErrorMessage(res, "Could not save this asset. Try again later."),
+        data: null,
+      };
+    }
+
+    const data = await res.json();
+
+    return { message: "success", data };
+  } catch (error) {
+    console.error(error);
+    return { message: "An error occurred. Try again later", data: null };
+  }
+};
+
+export const getAssetById = async (
+  id: number | string
+): Promise<ApiResult<{ asset: AssetApiAsset }>> => {
+  try {
+    const res = await fetch(`${assetUrl}/${id}`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!res.ok) {
+      return {
+        message: await readErrorMessage(res, "Could not load this asset."),
+        data: null,
+      };
+    }
+
+    const data = await res.json();
+
+    return { message: "success", data };
+  } catch (error) {
+    console.error(error);
+    return { message: "An error occurred. Try again later", data: null };
+  }
+};
+
+export const updateAsset = async (
+  id: number | string,
+  payload: Partial<AssetCreatePayload>
+): Promise<ApiResult<{ message: string; asset: AssetApiAsset }>> => {
+  try {
+    const res = await fetch(`${assetUrl}/${id}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      return {
+        message: await readErrorMessage(res, "Could not update this asset. Try again later."),
         data: null,
       };
     }

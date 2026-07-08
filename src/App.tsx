@@ -11,6 +11,9 @@ import Documents from './pages/Documents';
 import Calendar from './pages/Calendar';
 import Users from './pages/Users';
 import NewAsset from './pages/NewAsset';
+import NewDocument from './pages/NewDocument';
+import NewMaintenance from './pages/NewMaintenance';
+import NewUser from './pages/NewUser';
 
 function App() {
   return (
@@ -20,12 +23,17 @@ function App() {
           <Route index element={<Dashboard />} />
           <Route path="assets" element={<Assets />} />
           <Route path="assets/new" element={<NewAsset />} />
+          <Route path="assets/:assetId/edit" element={<NewAsset />} />
+          <Route path="documents/new" element={<NewDocument />} />
+
           <Route path="assets/:assetId" element={<Assets />} />
           <Route path="documents" element={<Documents />} />
           <Route path="calendar" element={<Calendar />} />
           <Route path="maintenance" element={<Maintenance />} />
+          <Route path="maintenance/schedule" element={<NewMaintenance />} />
           <Route path="reports" element={<Reports />} />
           <Route path="users" element={<Users />} />
+          <Route path="users/new" element={<NewUser />} />
           <Route path="audit-logs" element={<AuditLogs />} />
           <Route path="subjects" element={<SubjectList />} />
           <Route path="subjects/create" element={<Subjectcreate />} />

@@ -11,11 +11,13 @@ import {
   Save,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent, ReactNode } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { createAsset } from "@/api/AssetApi/Getasset";
-import type { AssetCategory, AssetCreatePayload } from "@/api/AssetApi/Getasset";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { createAsset, getAssetById, updateAsset } from "@/api/AssetApi/Getasset";
+import type { AssetCategory, AssetCreatePayload, AssetStatus } from "@/api/AssetApi/Getasset";
+import { getDepartments, getUsers, type ApiDepartment, type ApiUser } from "@/api/Getusers";
+import { getStaff, type StaffRecord } from "@/api/StaffApi";
 
 const inputClass =
   "h-12 w-full rounded border border-[#c7c4d8] bg-white px-5 text-base text-[#11111a] outline-none placeholder:text-[#737789] focus:ring-2 focus:ring-[#001970]";
@@ -33,26 +35,57 @@ type AssetFormState = {
   name: string;
   description: string;
   category: AssetCategory | "";
+  status: AssetStatus;
   assetCode: string;
   serialNumber: string;
+  manufacturer: string;
+  modelYear: string;
+  color: string;
   purchaseDate: string;
   purchasePrice: string;
+  warrantyExpiry: string;
+  vendorId: string;
   departmentId: string;
   location: string;
   custodianId: string;
+  condition: string;
+  conditionScore: string;
+  valuation: string;
+  riskLevel: string;
 };
+
+const conditions = ["EXCELLENT", "GOOD", "FAIR", "POOR"];
+const riskLevels = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
+
+const statuses: Array<{ value: string; label: string }> = [
+  { value: "ACTIVE", label: "Active" },
+  { value: "EXPIRED", label: "Expired" },
+  { value: "EXPIRING_SOON", label: "Expiring Soon" },
+  { value: "DECOMMISSIONED", label: "Decommissioned" },
+  { value: "PENDING_APPROVAL", label: "Pending Approval" },
+];
 
 const initialForm: AssetFormState = {
   name: "",
   description: "",
   category: "",
+  status: "ACTIVE",
   assetCode: "",
   serialNumber: "",
+  manufacturer: "",
+  modelYear: "",
+  color: "",
   purchaseDate: "",
   purchasePrice: "",
+  warrantyExpiry: "",
+  vendorId: "",
   departmentId: "",
   location: "",
   custodianId: "",
+  condition: "",
+  conditionScore: "",
+  valuation: "",
+  riskLevel: "",
 };
 
 function SectionHeader({
@@ -105,10 +138,73 @@ const parseOptionalId = (value: string) => {
 
 export default function NewAsset() {
   const navigate = useNavigate();
+  const { assetId } = useParams<{ assetId?: string }>();
+  const isEditing = Boolean(assetId);
   const [form, setForm] = useState(initialForm);
+  const [departments, setDepartments] = useState<ApiDepartment[]>([]);
+  const [users, setUsers] = useState<ApiUser[]>([]);
+  const [staff, setStaff] = useState<StaffRecord[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+
+    Promise.all([getDepartments(), getUsers(), getStaff()]).then(([departmentResult, userResult, staffResult]) => {
+      if (!mounted) return;
+      setDepartments(departmentResult.data?.departments ?? []);
+      setUsers(userResult.data?.users ?? []);
+      setStaff(staffResult.data?.staff ?? []);
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!assetId) return;
+
+    let mounted = true;
+
+    getAssetById(assetId).then((result) => {
+      if (!mounted) return;
+
+      if (!result.data?.asset) {
+        setError(result.message);
+        return;
+      }
+
+      const asset = result.data.asset;
+      setForm({
+        ...initialForm,
+        name: asset.name ?? "",
+        category: asset.category ?? "",
+        status: asset.status ?? "ACTIVE",
+        assetCode: asset.assetCode ?? "",
+        serialNumber: asset.serialNumber ?? "",
+        manufacturer: asset.manufacturer ?? "",
+        modelYear: asset.modelYear ? String(asset.modelYear) : "",
+        color: asset.color ?? "",
+        purchaseDate: asset.purchaseDate ? asset.purchaseDate.slice(0, 10) : "",
+        purchasePrice: asset.purchasePrice ? String(asset.purchasePrice) : "",
+        warrantyExpiry: asset.warrantyExpiry ? asset.warrantyExpiry.slice(0, 10) : "",
+        vendorId: asset.vendorId ? String(asset.vendorId) : "",
+        departmentId: asset.departmentId ? String(asset.departmentId) : "",
+        location: asset.location ?? "",
+        custodianId: asset.custodianId ? String(asset.custodianId) : "",
+        condition: asset.condition ?? "",
+        conditionScore: asset.conditionScore ? String(asset.conditionScore) : "",
+        valuation: asset.valuation ? String(asset.valuation) : "",
+        riskLevel: asset.riskLevel ?? "",
+      });
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, [assetId]);
 
   const updateField =
     (field: keyof AssetFormState) =>
@@ -130,16 +226,25 @@ export default function NewAsset() {
     }
 
     const purchasePrice = parseOptionalAmount(form.purchasePrice);
+    const vendorId = parseOptionalId(form.vendorId);
     const departmentId = parseOptionalId(form.departmentId);
     const custodianId = parseOptionalId(form.custodianId);
+    const modelYear = parseOptionalAmount(form.modelYear);
+    const conditionScore = parseOptionalAmount(form.conditionScore);
+    const valuation = parseOptionalAmount(form.valuation);
 
     if (Number.isNaN(purchasePrice)) {
       setError("Purchase value must be a valid number.");
       return;
     }
 
-    if (Number.isNaN(departmentId) || Number.isNaN(custodianId)) {
-      setError("Department ID and custodian ID must be positive whole numbers.");
+    if (Number.isNaN(vendorId) || Number.isNaN(departmentId) || Number.isNaN(custodianId)) {
+      setError("Vendor, department, and custodian selections must be valid.");
+      return;
+    }
+
+    if (Number.isNaN(modelYear) || Number.isNaN(conditionScore) || Number.isNaN(valuation)) {
+      setError("Model year, condition score, and valuation must be valid numbers if provided.");
       return;
     }
 
@@ -147,27 +252,38 @@ export default function NewAsset() {
       assetCode: form.assetCode.trim(),
       name: form.name.trim(),
       category: form.category,
-      status: "ACTIVE",
+      status: form.status,
       serialNumber: form.serialNumber.trim() || null,
+      manufacturer: form.manufacturer.trim() || null,
+      modelYear: modelYear,
+      color: form.color.trim() || null,
       purchaseDate: form.purchaseDate || null,
       purchasePrice,
+      warrantyExpiry: form.warrantyExpiry || null,
+      vendorId,
       location: form.location.trim() || null,
       departmentId,
       custodianId,
+      condition: (form.condition || null) as AssetCreatePayload["condition"],
+      conditionScore: conditionScore,
+      valuation: valuation,
+      riskLevel: (form.riskLevel || null) as AssetCreatePayload["riskLevel"],
     };
 
     setIsSubmitting(true);
 
     try {
-      const result = await createAsset(payload);
+      const result = isEditing && assetId
+        ? await updateAsset(assetId, payload)
+        : await createAsset(payload);
 
       if (!result.data) {
         setError(result.message);
         return;
       }
 
-      setSuccess("Asset saved successfully.");
-      navigate("/assets");
+      setSuccess(isEditing ? "Asset updated successfully." : "Asset saved successfully.");
+      navigate(isEditing && assetId ? `/assets/${assetId}` : "/assets");
     } finally {
       setIsSubmitting(false);
     }
@@ -180,13 +296,15 @@ export default function NewAsset() {
           <div className="mb-6 flex items-center gap-3 text-sm font-medium text-[#606475]">
             <Link to="/assets">Assets</Link>
             <span>&gt;</span>
-            <strong className="text-[#001970]">Add New Asset</strong>
+            <strong className="text-[#001970]">{isEditing ? "Edit Asset" : "Add New Asset"}</strong>
           </div>
           <h1 className="text-4xl font-extrabold tracking-normal text-[#11111a]">
-            Register New Asset
+            {isEditing ? "Edit Asset" : "Register New Asset"}
           </h1>
           <p className="mt-3 max-w-[830px] text-xl leading-7 text-[#30313d]">
-            Enter the details of the asset to register it in the system database for lifecycle tracking.
+            {isEditing
+              ? "Update the asset details, assignment, and lifecycle tracking fields."
+              : "Enter the details of the asset to register it in the system database for lifecycle tracking."}
           </p>
         </div>
 
@@ -251,10 +369,17 @@ export default function NewAsset() {
                   </select>
                 </Field>
                 <Field label="Status">
-                  <div className="flex h-12 items-center gap-3 rounded border border-[#c7c4d8] bg-[#f3f1f8] px-5 text-lg">
-                    <span className="h-3 w-3 rounded-full bg-[#10b981]" />
-                    Active (Default)
-                  </div>
+                  <select
+                    className={inputClass}
+                    onChange={updateField("status")}
+                    value={form.status}
+                  >
+                    {statuses.map((s) => (
+                      <option key={s.value} value={s.value}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
               </div>
             </div>
@@ -292,9 +417,9 @@ export default function NewAsset() {
                   <CalendarDays className="pointer-events-none absolute right-5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#11111a]" />
                 </div>
               </Field>
-              <Field label="Purchase Value (USD)">
+              <Field label="Purchase Value (NGN)">
                 <div className="relative">
-                  <span className="absolute left-5 top-1/2 -translate-y-1/2 text-lg text-[#737789]">$</span>
+                  <span className="absolute left-5 top-1/2 -translate-y-1/2 text-lg text-[#737789]">₦</span>
                   <input
                     className={`${inputClass} pl-10`}
                     min="0"
@@ -310,17 +435,123 @@ export default function NewAsset() {
           </article>
 
           <article className="rounded-lg border border-[#c7c4d8] bg-white p-8">
-            <SectionHeader icon={MapPin} title="Assignment & Location" />
+            <SectionHeader icon={BadgeDollarSign} title="Manufacturer & Specifications" />
 
-            <div className="mt-9 grid gap-7 md:grid-cols-3">
-              <Field label="Department ID">
+            <div className="mt-9 grid gap-8 md:grid-cols-2">
+              <Field label="Manufacturer">
+                <input
+                  className={inputClass}
+                  onChange={updateField("manufacturer")}
+                  placeholder="e.g. Dell, HP, Toyota"
+                  value={form.manufacturer}
+                />
+              </Field>
+              <Field label="Model Year">
                 <input
                   className={inputClass}
                   inputMode="numeric"
-                  onChange={updateField("departmentId")}
-                  placeholder="Department record ID"
-                  value={form.departmentId}
+                  onChange={updateField("modelYear")}
+                  placeholder="e.g. 2023"
+                  value={form.modelYear}
                 />
+              </Field>
+              <Field label="Color">
+                <input
+                  className={inputClass}
+                  onChange={updateField("color")}
+                  placeholder="e.g. Silver, Black"
+                  value={form.color}
+                />
+              </Field>
+              <Field label="Warranty Expiry">
+                <div className="relative">
+                  <input
+                    className={inputClass}
+                    onChange={updateField("warrantyExpiry")}
+                    type="date"
+                    value={form.warrantyExpiry}
+                  />
+                  <CalendarDays className="pointer-events-none absolute right-5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#11111a]" />
+                </div>
+              </Field>
+            </div>
+          </article>
+
+          <article className="rounded-lg border border-[#c7c4d8] bg-white p-8">
+            <SectionHeader icon={CheckCircle2} title="Condition & Risk Assessment" />
+
+            <div className="mt-9 grid gap-8 md:grid-cols-2">
+              <Field label="Condition">
+                <select
+                  className={inputClass}
+                  onChange={updateField("condition")}
+                  value={form.condition}
+                >
+                  <option value="">Select condition</option>
+                  {conditions.map((cond) => (
+                    <option key={cond} value={cond}>
+                      {cond}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Condition Score (0-100)">
+                <input
+                  className={inputClass}
+                  inputMode="numeric"
+                  onChange={updateField("conditionScore")}
+                  placeholder="0-100"
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={form.conditionScore}
+                />
+              </Field>
+              <Field label="Risk Level">
+                <select
+                  className={inputClass}
+                  onChange={updateField("riskLevel")}
+                  value={form.riskLevel}
+                >
+                  <option value="">Select risk level</option>
+                  {riskLevels.map((level) => (
+                    <option key={level} value={level}>
+                      {level}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Valuation (NGN)">
+                <div className="relative">
+                  <span className="absolute left-5 top-1/2 -translate-y-1/2 text-lg text-[#737789]">₦</span>
+                  <input
+                    className={`${inputClass} pl-10`}
+                    inputMode="decimal"
+                    min="0"
+                    onChange={updateField("valuation")}
+                    placeholder="0.00"
+                    step="0.01"
+                    type="number"
+                    value={form.valuation}
+                  />
+                </div>
+              </Field>
+            </div>
+          </article>
+
+          <article className="rounded-lg border border-[#c7c4d8] bg-white p-8">
+            <SectionHeader icon={MapPin} title="Assignment & Location" />
+
+            <div className="mt-9 grid gap-7 md:grid-cols-2">
+              <Field label="Department">
+                <select className={inputClass} onChange={updateField("departmentId")} value={form.departmentId}>
+                  <option value="">Select department</option>
+                  {departments.map((department) => (
+                    <option key={department.id} value={department.id}>
+                      {department.name}
+                    </option>
+                  ))}
+                </select>
               </Field>
               <Field label="Location">
                 <input
@@ -330,14 +561,25 @@ export default function NewAsset() {
                   value={form.location}
                 />
               </Field>
-              <Field label="Custodian ID">
-                <input
-                  className={inputClass}
-                  inputMode="numeric"
-                  onChange={updateField("custodianId")}
-                  placeholder="User record ID"
-                  value={form.custodianId}
-                />
+              <Field label="Custodian">
+                <select className={inputClass} onChange={updateField("custodianId")} value={form.custodianId}>
+                  <option value="">Select user</option>
+                  {users.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.name} - {user.email}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Vendor / Staff">
+                <select className={inputClass} onChange={updateField("vendorId")} value={form.vendorId}>
+                  <option value="">Select vendor or staff</option>
+                  {staff.map((staffMember) => (
+                    <option key={staffMember.id} value={staffMember.id}>
+                      {staffMember.fullName} - {staffMember.email}
+                    </option>
+                  ))}
+                </select>
               </Field>
             </div>
           </article>
@@ -408,7 +650,7 @@ export default function NewAsset() {
             type="submit"
           >
             <Save className="h-4 w-4" />
-            {isSubmitting ? "Saving..." : "Save Asset"}
+            {isSubmitting ? "Saving..." : isEditing ? "Update Asset" : "Save Asset"}
           </button>
         </div>
       </div>

@@ -33,7 +33,7 @@ export default function DashboardLayout() {
       <div className="flex min-h-screen">
         <aside className="hidden w-[290px] shrink-0 flex-col bg-[#2d2f35] text-white md:flex">
           <div className="px-7 py-6">
-            <h1 className="text-xl font-bold text-[#17181c]">ALMS Enterprise</h1>
+            <img src="/Logo.jpg" alt="Sterling Assurance Logo" className="h-12 w-auto" />
             <p className="mt-1 max-w-[180px] text-lg leading-7 text-white/75">
               Asset Lifecycle Management
             </p>

@@ -9,7 +9,8 @@ import {
 } from "lucide-react";
 
 import { useEffect, useState } from "react";
-import { getUsers } from "@/api/Getusers";
+import { Link } from "react-router-dom";
+import { getUsers, type ApiUser } from "@/api/Getusers";
 
 const roleClass: Record<string, string> = {
   "Super Admin": "bg-[#263f91] text-[#b7c6ff] border border-[#001970]",
@@ -26,20 +27,8 @@ const statusClass: Record<string, string> = {
 
 const bars = ["h-5 bg-[#c8d1df]", "h-8 bg-[#c0cada]", "h-4 bg-[#c8d1df]", "h-10 bg-[#9aa9c1]", "h-12 bg-[#001970]"];
 
-type ApiUser = {
-  id?: number;
-  name?: string;
-  email?: string;
-  initials?: string;
-  avatar?: string;
-  role?: string;
-  department?: string | { name?: string };
-  status?: string;
-};
-
 type UserRow = {
   id: string;
-  avatar: string;
   name: string;
   email: string;
   role: string;
@@ -60,30 +49,14 @@ const statusLabel: Record<string, string> = {
   DEACTIVATED: "Deactivated",
 };
 
-function getInitials(name = "", fallback = "?") {
-  const initials = name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join("")
-    .toUpperCase();
-
-  return initials || fallback;
-}
-
 function normalizeUser(user: ApiUser): UserRow {
   const name = user.name ?? "Unnamed User";
   const role = user.role ? roleLabel[user.role] ?? user.role : "Viewer";
   const status = user.status ? statusLabel[user.status] ?? user.status : "Pending";
-  const department =
-    typeof user.department === "string"
-      ? user.department
-      : user.department?.name ?? "Unassigned";
+  const department = user.department?.name ?? "Unassigned";
 
   return {
     id: String(user.id ?? user.email ?? name),
-    avatar: user.initials ?? user.avatar ?? getInitials(name),
     name,
     email: user.email ?? "No email provided",
     role,
@@ -148,10 +121,10 @@ export default function Users() {
             <Download className="h-5 w-5" />
             Export
           </button>
-          <button className="inline-flex h-12 items-center gap-3 rounded bg-[#001970] px-6 font-bold text-white">
+          <Link to="/users/new" className="inline-flex h-12 items-center gap-3 rounded bg-[#001970] px-6 font-bold text-white">
             <UserRoundPlus className="h-5 w-5" />
             Add User
-          </button>
+          </Link>
         </div>
       </div>
 
@@ -202,12 +175,7 @@ export default function Users() {
                 users.map((user) => (
                   <tr className="text-base" key={user.id}>
                     <td className="px-8 py-6">
-                      <div className="flex items-center gap-4">
-                        <div className="grid h-10 w-10 place-items-center rounded bg-[#dbe8ff] font-bold text-[#001970]">
-                          {user.avatar}
-                        </div>
-                        <strong className="max-w-[150px] text-lg leading-6">{user.name}</strong>
-                      </div>
+                      <strong className="max-w-[180px] text-lg leading-6">{user.name}</strong>
                     </td>
                     <td className="px-8 py-6 text-[#30313d]">{user.email}</td>
                     <td className="px-8 py-6">
