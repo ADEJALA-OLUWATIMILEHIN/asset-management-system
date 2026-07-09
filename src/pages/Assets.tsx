@@ -495,13 +495,13 @@ export default function Assets() {
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row">
-          <button className="inline-flex h-11 items-center justify-center gap-3 rounded border border-[#c7c4d8] bg-[#fbfaff] px-6 text-sm font-bold text-[#001970]">
+          <button className="inline-flex h-11 items-center justify-center gap-3 rounded bg-[#001970] px-6 text-sm font-bold text-white shadow-sm">
             <Download className="h-4 w-4" />
             Export
-            <ChevronDown className="h-4 w-4 text-[#606475]" />
+            <ChevronDown className="h-4 w-4" />
           </button>
           <Link
-            className="inline-flex h-11 items-center justify-center gap-3 rounded bg-[#263f91] px-7 text-sm font-bold text-white shadow-sm"
+            className="inline-flex h-11 items-center justify-center gap-3 rounded bg-[#001970] px-7 text-sm font-bold text-white shadow-sm"
             to="/assets/new"
           >
             <Plus className="h-5 w-5" />
@@ -555,7 +555,7 @@ export default function Assets() {
             <FilterSelect label="Branch" onChange={setBranchFilter} options={branchOptions} value={branchFilter} />
             <FilterSelect label="Status" onChange={setStatusFilter} options={statusOptions} value={statusFilter} />
             <button
-              className="h-11 px-3 text-sm font-bold text-[#001970]"
+              className="h-11 rounded bg-[#001970] px-5 text-sm font-bold text-white shadow-sm"
               onClick={clearFilters}
               type="button"
             >
@@ -642,7 +642,7 @@ export default function Assets() {
                         className="grid h-9 w-9 place-items-center rounded text-[#111827] hover:bg-[#eef2ff]"
                         onClick={(event) => {
                           event.stopPropagation();
-                          navigate(`/assets/${row.id}`);
+                          navigate(`/assets/${row.id}/edit`);
                         }}
                         type="button"
                       >
@@ -903,7 +903,7 @@ function AssetDetailView({
             </label>
           )}
           <Link
-            className="inline-flex h-14 items-center gap-3 rounded border border-[#c7c4d8] bg-white px-6 text-lg text-[#001970] hover:bg-[#f3f1f8]"
+            className="inline-flex h-14 items-center gap-3 rounded bg-[#001970] px-6 text-lg font-semibold text-white shadow-sm"
             to={`/assets/${selectedAsset.id}/edit`}
           >
             <Edit3 className="h-5 w-5" />
